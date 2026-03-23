@@ -1,234 +1,213 @@
-import tkinter as tk
-import os
-from PIL import Image, ImageTk
+"""
+settings.py  -  Bingrow  (Settings Screen)
 
-# ─── CONFIGURATION ─────────────────────────────────────────────────────────────
+STANDALONE - no external variables needed.
+
+HOW IT'S CALLED FROM menu.py:
+    from settings import show_settings_screen
+    show_settings_screen(screen, clock)
+
+ASSETS (same folder as this .py file):
+    settingsbg.png
+    Gameplay Music.mp3
+"""
+
+import pygame
+import sys
+
+# ── Init ───────────────────────────────────────────────────────────────────────
+pygame.init()
+pygame.mixer.init()
+
+# ── Constants ──────────────────────────────────────────────────────────────────
 SCREEN_W, SCREEN_H = 1100, 620
-ASSETS_DIR = ""
+FPS        = 60
+BG_IMAGE   = "settingsbg.png"
+MUSIC_FILE = "Gameplay Music.mp3"
 
-def _asset(filename):
-    return os.path.join(ASSETS_DIR, filename) if ASSETS_DIR else filename
+# Colours
+WHITE      = (255, 255, 255)
+BLACK      = (0,   0,   0)
+GREEN      = (106, 191,  75)
+GREEN_DARK = (78,  154,  46)
+YELLOW     = (212, 232,  74)
+PURPLE     = (168,  85, 200)
+GRAY       = (180, 180, 180)
 
-BG_IMAGE   = _asset("settingsbg.png")
-MUSIC_FILE = _asset("Gameplay Music.mp3")
+# Slider settings
+SLIDER_W  = 420
+SLIDER_H  = 24
+KNOB_R    = 14
+TRACK_CX  = SCREEN_W // 2
+MUSIC_Y   = 255
+SFX_Y     = 345
 
-# Colors
-CLR_GREEN_BTN   = "#5CB85C"
-CLR_GREEN_DARK  = "#4A9C4A"
-CLR_GREEN_TRACK = "#4A9C4A"
-CLR_SLIDER_FILL = "#6DC95F"
-CLR_SLIDER_KNOB = "#FFFFFF"
-CLR_TEXT_YLW    = "#26A014"
-CLR_TEXT_WHITE  = "#FFFFFF"
-CLR_CHECK_BG    = "#5CB85C"
-CLR_CHECK_TICK  = "#FFFFFF"
+# Fonts
+FONT_LABEL   = pygame.font.SysFont("Arial", 17, bold=True)
+FONT_PCT     = pygame.font.SysFont("Arial", 17, bold=True)
+FONT_VERSION = pygame.font.SysFont("Arial",  9, bold=True)
+FONT_BACK    = pygame.font.SysFont("Arial", 18, bold=True)
+FONT_CHECK   = pygame.font.SysFont("Arial", 20, bold=True)
 
-SLIDER_W_RATIO = 0.38
-SLIDER_H       = 28
-KNOB_R         = 16
 
-# ─── HELPERS ───────────────────────────────────────────────────────────────────
-def _load_image(path, size=None):
+# ── Helpers ────────────────────────────────────────────────────────────────────
+def load_image(path, size=None):
     try:
-        img = Image.open(path).convert("RGBA")
+        img = pygame.image.load(path).convert_alpha()
         if size:
-            img = img.resize(size, Image.LANCZOS)
-        return ImageTk.PhotoImage(img)
+            img = pygame.transform.scale(img, size)
+        return img
     except Exception:
         return None
 
-# ─── DEFAULT AUDIO MANAGER ─────────────────────────────────────────────────────
-class _DefaultAudioManager:
-    def __init__(self):
-        self.music_volume = 1.0
-        self.sfx_volume   = 0.67
-        self._mixer_ok    = False
-        try:
-            import pygame
-            pygame.mixer.init()
-            pygame.mixer.music.load(MUSIC_FILE)
-            pygame.mixer.music.set_volume(self.music_volume)
-            pygame.mixer.music.play(-1)
-            self._mixer_ok = True
-        except Exception:
-            pass
 
-    def set_music_volume(self, v: float):
-        self.music_volume = max(0.0, min(1.0, v))
-        if self._mixer_ok:
+def draw_rounded_rect(surface, color, rect, radius):
+    x, y, w, h = rect
+    pygame.draw.rect(surface, color, (x + radius, y, w - 2*radius, h))
+    pygame.draw.rect(surface, color, (x, y + radius, w, h - 2*radius))
+    pygame.draw.circle(surface, color, (x + radius,     y + radius),     radius)
+    pygame.draw.circle(surface, color, (x + w - radius, y + radius),     radius)
+    pygame.draw.circle(surface, color, (x + radius,     y + h - radius), radius)
+    pygame.draw.circle(surface, color, (x + w - radius, y + h - radius), radius)
+
+
+def draw_back_btn(surface, font):
+    cx, cy, size, r = 42, 42, 36, 8
+    x0, y0 = cx - size//2, cy - size//2
+    draw_rounded_rect(surface, GREEN_DARK, (x0+2, y0+2, size, size), r)
+    draw_rounded_rect(surface, GREEN,      (x0,   y0,   size, size), r)
+    label = font.render("<", True, WHITE)
+    surface.blit(label, (cx - label.get_width()//2, cy - label.get_height()//2))
+    return pygame.Rect(x0, y0, size, size)
+
+
+def draw_slider(surface, cx, y, width, value):
+    """Draw a slider track + knob. value = 0.0 to 1.0"""
+    x0 = cx - width // 2
+    track_y = y + SLIDER_H // 2
+    fill_x  = x0 + int(value * width)
+
+    # Track background (dark green)
+    draw_rounded_rect(surface, GREEN_DARK,
+                      (x0, y, width, SLIDER_H), SLIDER_H // 2)
+    # Filled portion (bright green)
+    if fill_x > x0:
+        fill_w = fill_x - x0
+        draw_rounded_rect(surface, GREEN,
+                          (x0, y, max(fill_w, SLIDER_H), SLIDER_H), SLIDER_H // 2)
+
+    # Knob
+    kx = x0 + int(value * width)
+    pygame.draw.circle(surface, WHITE,     (kx, track_y), KNOB_R)
+    pygame.draw.circle(surface, GREEN_DARK,(kx, track_y), KNOB_R, 3)
+
+    # Return knob rect and track x0 for hit detection
+    return pygame.Rect(kx - KNOB_R, track_y - KNOB_R, KNOB_R*2, KNOB_R*2), x0
+
+
+# ── Settings Screen ────────────────────────────────────────────────────────────
+def show_settings_screen(screen, clock):
+
+    bg         = load_image(BG_IMAGE, (SCREEN_W, SCREEN_H))
+    music_vol  = 1.0    # 0.0 to 1.0
+    sfx_vol    = 0.67
+    dragging   = None   # "music" or "sfx"
+
+    # Apply initial music volume
+    try:
+        pygame.mixer.music.set_volume(music_vol)
+    except Exception:
+        pass
+
+    while True:
+        mx, my = pygame.mouse.get_pos()
+
+        # ── Draw ──────────────────────────────────────────────────────────────
+        if bg:
+            screen.blit(bg, (0, 0))
+        else:
+            screen.fill((184, 220, 240))
+
+        # Purple border
+        pygame.draw.rect(screen, PURPLE, (0, 0, SCREEN_W, SCREEN_H), 3)
+
+        # Version
+        v1 = FONT_VERSION.render("v.1.0.0", True, WHITE)
+        v2 = FONT_VERSION.render("A BONDOX STUDIOS GAME", True, WHITE)
+        screen.blit(v1, (SCREEN_W - v1.get_width() - 8,  6))
+        screen.blit(v2, (SCREEN_W - v2.get_width() - 8, 16))
+
+        # Back button
+        back_rect = draw_back_btn(screen, FONT_BACK)
+
+        track_x0 = TRACK_CX - SLIDER_W // 2
+
+        # ── MUSIC slider ──────────────────────────────────────────────────────
+        music_lbl = FONT_LABEL.render("MUSIC", True, YELLOW)
+        music_pct = FONT_PCT.render(f"{int(music_vol*100)}%", True, YELLOW)
+        screen.blit(music_lbl, (track_x0, MUSIC_Y - 26))
+        screen.blit(music_pct, (track_x0 + SLIDER_W - music_pct.get_width(),
+                                MUSIC_Y - 26))
+        music_knob, _ = draw_slider(screen, TRACK_CX, MUSIC_Y, SLIDER_W, music_vol)
+        music_track   = pygame.Rect(track_x0, MUSIC_Y, SLIDER_W, SLIDER_H)
+
+        # ── SFX slider ────────────────────────────────────────────────────────
+        sfx_lbl = FONT_LABEL.render("SFX", True, YELLOW)
+        sfx_pct = FONT_PCT.render(f"{int(sfx_vol*100)}%", True, YELLOW)
+        screen.blit(sfx_lbl, (track_x0, SFX_Y - 26))
+        screen.blit(sfx_pct, (track_x0 + SLIDER_W - sfx_pct.get_width(),
+                               SFX_Y - 26))
+        sfx_knob, _ = draw_slider(screen, TRACK_CX, SFX_Y, SLIDER_W, sfx_vol)
+        sfx_track   = pygame.Rect(track_x0, SFX_Y, SLIDER_W, SLIDER_H)
+
+        # ── Dragging sliders ──────────────────────────────────────────────────
+        if dragging == "music":
+            raw = (mx - track_x0) / SLIDER_W
+            music_vol = max(0.0, min(1.0, raw))
             try:
-                import pygame
-                pygame.mixer.music.set_volume(self.music_volume)
+                pygame.mixer.music.set_volume(music_vol)
             except Exception:
                 pass
 
-    def set_sfx_volume(self, v: float):
-        self.sfx_volume = max(0.0, min(1.0, v))
+        elif dragging == "sfx":
+            raw = (mx - track_x0) / SLIDER_W
+            sfx_vol = max(0.0, min(1.0, raw))
 
-# ─── CUSTOM SLIDER WIDGET ──────────────────────────────────────────────────────
-class _Slider:
-    def __init__(self, canvas, x, y, width, height, knob_r,
-                 initial=1.0, on_change=None, tag_prefix="slider"):
+        pygame.display.flip()
+        clock.tick(FPS)
 
-        self.canvas    = canvas
-        self.x, self.y = x, y
-        self.width     = width
-        self.height    = height
-        self.knob_r    = knob_r
-        self.value     = initial
-        self.on_change = on_change
-        self.tag       = tag_prefix
-        self._dragging = False
+        # ── Events ────────────────────────────────────────────────────────────
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
 
-        self._track_bg = canvas.create_rectangle(0,0,0,0, fill=CLR_GREEN_TRACK, outline="", tags=tag_prefix)
-        self._track_fill = canvas.create_rectangle(0,0,0,0, fill=CLR_SLIDER_FILL, outline="", tags=tag_prefix)
-        self._knob = canvas.create_oval(0,0,0,0, fill=CLR_SLIDER_KNOB, outline=CLR_SLIDER_FILL, width=3, tags=tag_prefix + "_knob")
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if back_rect.collidepoint(mx, my):
+                    return  # returns to menu.py
 
-        canvas.tag_bind(tag_prefix + "_knob", "<ButtonPress-1>", self._press)
-        canvas.tag_bind(tag_prefix + "_knob", "<B1-Motion>", self._drag)
-        canvas.tag_bind(tag_prefix + "_knob", "<ButtonRelease-1>", self._release)
+                if music_knob.collidepoint(mx, my) or music_track.collidepoint(mx, my):
+                    dragging = "music"
 
-    def update_position(self, x, y, width):
-        self.x, self.y, self.width = x, y, width
-        self._update_visuals(self.value)
+                if sfx_knob.collidepoint(mx, my) or sfx_track.collidepoint(mx, my):
+                    dragging = "sfx"
 
-    def _val_to_x(self, v):
-        return self.x + v * self.width
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                dragging = None
 
-    def _x_to_val(self, px):
-        v = (px - self.x) / self.width
-        return max(0.0, min(1.0, v))
 
-    def _update_visuals(self, v):
-        kx = self._val_to_x(v)
-        ty = self.y + self.height // 2
-        self.canvas.coords(self._track_bg, self.x, self.y, self.x + self.width, self.y + self.height)
-        self.canvas.coords(self._track_fill, self.x, self.y, kx, self.y + self.height)
-        self.canvas.coords(self._knob, kx - self.knob_r, ty - self.knob_r, kx + self.knob_r, ty + self.knob_r)
-
-    def _press(self, event): self._dragging = True
-    def _drag(self, event):
-        if self._dragging:
-            self.value = self._x_to_val(event.x)
-            self._update_visuals(self.value)
-            if self.on_change: self.on_change(self.value)
-    def _release(self, event): self._dragging = False
-
-# ─── SETTINGS SCREEN CLASS ─────────────────────────────────────────────────────
-class SettingsScreen(tk.Frame):
-    def __init__(self, parent, audio_manager=None, back_callback=None, root_window=None, **kwargs):
-        super().__init__(parent, **kwargs)
-        self.audio_manager = audio_manager or _DefaultAudioManager()
-        self.back_callback = back_callback
-        self.root_window = root_window or parent.winfo_toplevel()
-        
-        self.canvas = tk.Canvas(self, highlightthickness=0)
-        self.canvas.pack(fill="both", expand=True)
-        
-        self._bg_img_raw = Image.open(BG_IMAGE) if os.path.exists(BG_IMAGE) else None
-        self._images = {}
-        
-        self._init_widgets()
-        self.canvas.bind("<Configure>", self._on_resize)
-
-    def _init_widgets(self):
-        self.bg_id = self.canvas.create_image(0, 0, anchor="nw")
-        self.ver_id = self.canvas.create_text(0, 0, anchor="ne", fill=CLR_TEXT_WHITE, font=("Arial", 8, "bold"), justify="right")
-        
-        # UI Elements
-        self.music_lbl = self.canvas.create_text(0, 0, anchor="w", text="MUSIC", fill=CLR_TEXT_YLW, font=("Arial Black", 16, "bold"))
-        self.music_pct = self.canvas.create_text(0, 0, anchor="e", fill=CLR_TEXT_YLW, font=("Arial Black", 16, "bold"))
-        self.music_slider = _Slider(self.canvas, 0, 0, 0, SLIDER_H, KNOB_R, initial=self.audio_manager.music_volume, on_change=self._on_music_change, tag_prefix="ms")
-
-        self.sfx_lbl = self.canvas.create_text(0, 0, anchor="w", text="SFX", fill=CLR_TEXT_YLW, font=("Arial Black", 16, "bold"))
-        self.sfx_pct = self.canvas.create_text(0, 0, anchor="e", fill=CLR_TEXT_YLW, font=("Arial Black", 16, "bold"))
-        self.sfx_slider = _Slider(self.canvas, 0, 0, 0, SLIDER_H, KNOB_R, initial=self.audio_manager.sfx_volume, on_change=self._on_sfx_change, tag_prefix="ss")
-
-        self.fs_lbl = self.canvas.create_text(0, 0, anchor="e", text="FULLSCREEN MODE", fill=CLR_TEXT_YLW, font=("Arial Black", 16, "bold"))
-        self.check_box = self.canvas.create_rectangle(0,0,0,0, fill=CLR_CHECK_BG, outline=CLR_GREEN_DARK, width=2, tags="fs_toggle")
-        self.tick_id = self.canvas.create_text(0, 0, text="✓", fill=CLR_CHECK_TICK, font=("Arial Bold", 22, "bold"), tags="fs_toggle")
-        
-        # Back Button Group
-        self.back_bg = self.canvas.create_rectangle(0,0,0,0, fill=CLR_GREEN_BTN, outline=CLR_GREEN_DARK, width=2, tags="back_btn")
-        self.back_txt = self.canvas.create_text(0,0, text="<", fill="white", font=("Arial Black", 18, "bold"), tags="back_btn")
-
-        # Bindings
-        self.canvas.tag_bind("fs_toggle", "<Button-1>", self._toggle_fullscreen)
-        self.canvas.tag_bind("back_btn", "<Button-1>", self._on_back)
-
-    def _on_resize(self, event):
-        w, h = event.width, event.height
-        
-        if self._bg_img_raw:
-            resized = self._bg_img_raw.resize((w, h), Image.LANCZOS)
-            self._images["bg"] = ImageTk.PhotoImage(resized)
-            self.canvas.itemconfig(self.bg_id, image=self._images["bg"])
-
-        mid_x = w // 2
-        sw = int(w * SLIDER_W_RATIO)
-        sx = mid_x - sw // 2
-
-        self.canvas.coords(self.ver_id, w - 10, 10)
-        self.canvas.itemconfig(self.ver_id, text=f"v.1.0.0\nA BONDOX STUDIOS GAME")
-
-        # Back Button (Fixed top-left)
-        self.canvas.coords(self.back_bg, 25, 25, 61, 61)
-        self.canvas.coords(self.back_txt, 43, 43)
-
-        # Sliders
-        m_y = h * 0.50
-        self.canvas.coords(self.music_lbl, sx, m_y - 20)
-        self.canvas.coords(self.music_pct, sx + sw, m_y - 20)
-        self.canvas.itemconfig(self.music_pct, text=f"{int(self.audio_manager.music_volume*100)}%")
-        self.music_slider.update_position(sx, m_y, sw)
-
-        s_y = h * 0.65
-        self.canvas.coords(self.sfx_lbl, sx, s_y - 20)
-        self.canvas.coords(self.sfx_pct, sx + sw, s_y - 20)
-        self.canvas.itemconfig(self.sfx_pct, text=f"{int(self.audio_manager.sfx_volume*100)}%")
-        self.sfx_slider.update_position(sx, s_y, sw)
-
-        # Fullscreen
-        f_y = h * 0.82
-        self.canvas.coords(self.fs_lbl, mid_x - 20, f_y)
-        bx = mid_x + 80
-        self.canvas.coords(self.check_box, bx-22, f_y-22, bx+22, f_y+22)
-        self.canvas.coords(self.tick_id, bx, f_y)
-        
-        is_fs = self.root_window.attributes("-fullscreen")
-        self.canvas.itemconfig(self.tick_id, state="normal" if is_fs else "hidden")
-
-    def _on_music_change(self, v):
-        self.audio_manager.set_music_volume(v)
-        self.canvas.itemconfig(self.music_pct, text=f"{int(v*100)}%")
-
-    def _on_sfx_change(self, v):
-        self.audio_manager.set_sfx_volume(v)
-        self.canvas.itemconfig(self.sfx_pct, text=f"{int(v*100)}%")
-
-    def _toggle_fullscreen(self, event=None):
-        curr = self.root_window.attributes("-fullscreen")
-        self.root_window.attributes("-fullscreen", not curr)
-
-    def _on_back(self, event=None):
-        if self.back_callback:
-            self.back_callback()
-        else:
-            self.destroy()
-
-# ─── INTEGRATION HELPER ────────────────────────────────────────────────────────
-def show_settings_screen(parent, audio_manager=None, back_callback=None, root_window=None):
-    for widget in parent.winfo_children():
-        widget.destroy()
-    screen = SettingsScreen(parent, audio_manager=audio_manager,
-                            back_callback=back_callback, root_window=root_window)
-    screen.pack(fill="both", expand=True)
-    return screen
-
+# ── Standalone test ────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    root = tk.Tk()
-    root.geometry(f"{SCREEN_W}x{SCREEN_H}")
-    # Example: back_callback=root.destroy will close the window
-    app = SettingsScreen(root, back_callback=root.destroy)
-    app.pack(fill="both", expand=True)
-    root.mainloop()#SETTINGS HERE!
+    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+    pygame.display.set_caption("Bingrow - Settings Test")
+    clock = pygame.time.Clock()
+
+    # Load music for testing
+    try:
+        pygame.mixer.music.load(MUSIC_FILE)
+        pygame.mixer.music.play(-1)
+    except Exception:
+        pass
+
+    show_settings_screen(screen, clock)
+    pygame.quit()
