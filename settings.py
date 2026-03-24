@@ -109,8 +109,15 @@ def draw_slider(surface, cx, y, width, value):
 def show_settings_screen(screen, clock):
 
     bg         = load_image(BG_IMAGE, (SCREEN_W, SCREEN_H))
-    music_vol  = 1.0    # 0.0 to 1.0
-    sfx_vol    = 1.0
+    music_vol = pygame.mixer.music.get_volume() 
+    
+    # SFX pulls from a global variable we create
+    global GLOBAL_SFX_VOL
+    if 'GLOBAL_SFX_VOL' not in globals():
+        GLOBAL_SFX_VOL = 1.0 # Default if it's the first time opening settings
+    
+    sfx_vol = GLOBAL_SFX_VOL
+    dragging = None
     dragging   = None   # "music" or "sfx"
 
     # Apply initial music volume
@@ -162,16 +169,15 @@ def show_settings_screen(screen, clock):
 
         # ── Dragging sliders ──────────────────────────────────────────────────
         if dragging == "music":
-            raw = (mx - track_x0) / SLIDER_W
-            music_vol = max(0.0, min(1.0, raw))
-            try:
-                pygame.mixer.music.set_volume(music_vol)
-            except Exception:
-                pass
+              raw = (mx - track_x0) / SLIDER_W
+              music_vol = max(0.0, min(1.0, raw))
+              pygame.mixer.music.set_volume(music_vol) # Directly updates the music player
 
         elif dragging == "sfx":
-            raw = (mx - track_x0) / SLIDER_W
-            sfx_vol = max(0.0, min(1.0, raw))
+              raw = (mx - track_x0) / SLIDER_W
+              sfx_vol = max(0.0, min(1.0, raw))
+        # Update the global variable so it's remembered session-wide
+              GLOBAL_SFX_VOL = sfx_vol
 
         pygame.display.flip()
         clock.tick(FPS)
