@@ -1,3 +1,1 @@
-# Bingrow
-GitHub Repository for IT0011 project: Bingrow
-DO NOT COMMIT HERE!
+Version 1.0.0 of Bingrow has arrived!
